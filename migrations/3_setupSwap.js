@@ -1,65 +1,61 @@
-const Web3 = require("web3");
 const TokenContract = artifacts.require("./../contracts/token/FocalPoint.sol");
 
 const contract = require("@truffle/contract");
-var provider = new Web3.providers.HttpProvider(
-  "https://data-seed-prebsc-2-s3.binance.org:8545/"
-);
-
+const Web3 = require("web3");
 module.exports = async function (deployer, network, accounts) {
-  if (network != "testnet") {
+  if (network == "forknet") {
+    var ROUTERADDRESS = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
+    var provider = new Web3.providers.HttpProvider("http://localhost:8545");
+  } else if (network == "testnet") {
+    var ROUTERADDRESS = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
+    var provider = new Web3.providers.HttpProvider(
+      "https://data-seed-prebsc-2-s3.binance.org:8545/"
+    );
+  } else {
+    console.log(`Network ${network} not supported!`);
     return;
   }
-
   var DEPLOYER = accounts[0];
   var MARKETING = accounts[1];
   var PLATFORM = accounts[2];
+
   const TokenInstance = await TokenContract.deployed();
   console.log("Focal at: " + TokenInstance.address);
+  await new Promise((r) => setTimeout(r, 2000));
 
-  var ROUTERADDRESS = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
   const SwapAbi = require("./../abis/Router.json");
-  const RouterInstance = new this.web3.eth.Contract(SwapAbi, ROUTERADDRESS);
-  RouterInstance.setProvider(provider);
+  const RouterContract = contract({ abi: SwapAbi, address: ROUTERADDRESS });
+  RouterContract.setProvider(provider);
+  const RouterInstance = await RouterContract.at(ROUTERADDRESS);
+  console.log(`Connected to router at ${ROUTERADDRESS}!`);
 
   await TokenInstance.approve(
     ROUTERADDRESS,
-    Web3.utils.toWei("100000000", "ether"),
+    this.web3.utils.toWei("100000000", "ether"),
     {
       from: DEPLOYER,
       gas: 4000000,
     }
   );
 
-  var liqTokens = web3.utils.fromWei(
+  var tokens = this.web3.utils.fromWei(
     (await TokenInstance.balanceOf(DEPLOYER)).toString(),
     "ether"
   );
-  console.log(`${liqTokens.toString()} available for liq`);
-
+  var tokensForLiq = this.web3.utils.toWei((tokens * 0.686).toString(), "ether");
+  console.log(`${tokens.toString()} available for liq, adding ${tokensForLiq.toString()}`);
   // not working?? Nothing happens...
-  RouterInstance.methods
-    .addLiquidityETH(
-      TokenInstance.address,
-      web3.utils.toWei((liqTokens * 0.686).toString(), "ether"),
-      0,
-      0,
-      DEPLOYER,
-      Math.floor(Date.now() / 1000) + 60
-    )
-    .call({
-      value: web3.utils.toWei("1", "ether"),
-      from: DEPLOYER,
-      gas: 4000000,
-    })
-    .then(function (status) {
-      if (status) {
-        console.log("adding liquidity worked");
-        return status;
-      }
-    })
-    .catch(function (error) {
-      console.log(error);
-      return "transfer.service error";
-    });
+  var x = await RouterInstance.addLiquidityETH(
+    TokenInstance.address,
+    tokensForLiq,
+    0,
+    0,
+    DEPLOYER,
+    1645279988,
+    {
+      value: 400000000000000000,
+      gas: 5000000,
+    }
+  );
+  console.log(`adding liquidity: ${x}`);
 };

@@ -56,13 +56,13 @@ contract Presale is ReentrancyGuard, Ownable {
         uint256 tokens = _bnbSent / 1e9 * tokensPerBNB;
 
         require (_bnbSent >= 0.1 ether, "BNB is lesser than min value");
-        require (_bnbSent <= 5 ether, "BNB is greater than max value");
+        require (_bnbSent <= 2 ether, "BNB is greater than max value");
         require (bnbReceived <= 499.91 ether, "Hardcap reached");
 
         tokensOwned[_buyer] = tokensOwned[_buyer]+(tokens);
 
         // Changed to prevent botting of presale
-        require(tokensOwned[_buyer] <= tokensPerBNB * 5 ether, "Can't buy more than 5 BNB worth of tokens");
+        require(tokensOwned[_buyer] <= tokensPerBNB * 2 ether, "Can't buy more than 2 BNB worth of tokens");
 
         tokensUnclaimed[_buyer] = tokensUnclaimed[_buyer]+(tokens);
         totalTokensSold = totalTokensSold+(tokens);
