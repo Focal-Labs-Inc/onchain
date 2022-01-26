@@ -82,11 +82,16 @@ module.exports = async function (deployer, network, accounts) {
         gas: 5000000,
       }
     );
+    console.log(
+      `Contract Token Balance: ${(
+        await TokenInstance.balanceOf(TokenInstance.address)
+      ).toString()}`
+    );
   }
 
   console.log("Preparing to sell to trigger swapandliquify");
   console.log(
-    `Token Balance for contract: ${(
+    `Contract Token Balance before sell: ${(
       await TokenInstance.balanceOf(TokenInstance.address)
     ).toString()}`
   );
@@ -100,6 +105,11 @@ module.exports = async function (deployer, network, accounts) {
       from: TRADER,
       gas: 5000000,
     }
+  );
+  console.log(
+    `Contract Token Balance after sell: ${(
+      await TokenInstance.balanceOf(TokenInstance.address)
+    ).toString()}`
   );
 
   console.log(sellRes.receipt.rawLogs);

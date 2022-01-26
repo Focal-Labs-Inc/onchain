@@ -274,8 +274,8 @@ contract FocalPoint is ERC20, Ownable {
     address recipient,
     uint256 amount
   ) private {
-    uint256 tokenBalance = balanceOf(address(this));
     // check if we should perform a liquify
+    uint256 tokenBalance = balanceOf(address(this));
     if (
       !_liquifying && swapAndLiquifyEnabled && tokenBalance >= _minSwapTokens
     ) {
@@ -334,13 +334,7 @@ contract FocalPoint is ERC20, Ownable {
     _tokensForLiquidity = 0;
     _tokensForMarketing = 0;
     _tokensForPlatform = 0;
-
-    // send the native token to the fee addresses
-    (bool success, ) = address(marketingAddress).call{
-      value: nativeForMarketing
-    }("");
-    (success, ) = address(platformAddress).call{value: nativeForPlatform}("");
-
+    
     // add the remaining native token as liquidity along with
     // reserved tokens
     _addLiquidity(tokensForLiquidity, nativeForLiquidity);
@@ -349,6 +343,12 @@ contract FocalPoint is ERC20, Ownable {
       nativeForLiquidity,
       tokensForLiquidity
     );
+
+    // send the native token to the fee addresses
+    (bool success, ) = address(marketingAddress).call{
+      value: nativeForMarketing
+    }("");
+    (success, ) = address(platformAddress).call{value: nativeForPlatform}("");
 
     // move any remaining native tokens to the platform address
     if (address(this).balance > 1e17) {
