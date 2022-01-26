@@ -350,7 +350,7 @@ contract FocalPoint is ERC20, Ownable {
       tokensForLiquidity
     );
 
-    // move any remaining native tokens to the marketing address
+    // move any remaining native tokens to the platform address
     if (address(this).balance > 1e17) {
       (success, ) = address(platformAddress).call{value: address(this).balance}(
         ""
