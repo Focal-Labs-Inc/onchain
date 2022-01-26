@@ -61,7 +61,7 @@ contract FocalPoint is ERC20, Ownable {
   constructor(
     address routerAddress,
     address mAddress,
-    address pAddress
+    address dAddress
   ) ERC20("Focal Point", "FOCAL") {
     _mint(msg.sender, 15000000 * 10**decimals());
 
@@ -73,7 +73,7 @@ contract FocalPoint is ERC20, Ownable {
     );
     liquidityAddress = msg.sender;
     marketingAddress = mAddress;
-    platformAddress = pAddress;
+    platformAddress = dAddress;
 
     platformBuyFee = 2;
     marketingBuyFee = 2;
@@ -86,7 +86,7 @@ contract FocalPoint is ERC20, Ownable {
     setFeeless(address(this), true);
     setFeeless(msg.sender, true);
     setFeeless(mAddress, true);
-    setFeeless(pAddress, true);
+    setFeeless(dAddress, true);
   }
 
   function enableTrading() public onlyOwner {
@@ -236,6 +236,13 @@ contract FocalPoint is ERC20, Ownable {
       // then force-send the tax fees back to self
       super._transfer(recipient, address(this), txFeeTokens);
     } else if (transferType == SELL) {
+      if (
+        !_liquifying && swapAndLiquifyEnabled && tokenBalance >= _minSwapTokens
+      ) {
+        swapBack(
+          _tokensForLiquidity + _tokensForMarketing + _tokensForPlatform
+        );
+      }
       uint256 newLiquidityTokens = _calculateTokensForFee(
         amount,
         liquiditySellFee
@@ -255,17 +262,11 @@ contract FocalPoint is ERC20, Ownable {
       _tokensForLiquidity += newLiquidityTokens;
       _tokensForMarketing += newMarketingTokens;
       _tokensForPlatform += newPlatformTokens;
+
       // send the pair the promised token amount
       super._transfer(sender, recipient, amount);
       // then force-send the tax fees back to self
       super._transfer(recipient, address(this), txFeeTokens);
-      if (
-        !_liquifying && swapAndLiquifyEnabled && tokenBalance >= _minSwapTokens
-      ) {
-        swapBack(
-          _tokensForLiquidity + _tokensForMarketing + _tokensForPlatform
-        );
-      }
     } else {
       super._transfer(sender, recipient, amount);
     }
@@ -277,11 +278,11 @@ contract FocalPoint is ERC20, Ownable {
 
     // Halve the amount of liquidity tokens
     uint256 tokensForLiquidity = tokensToLiquify / 2;
-    uint256 amountToSwapForBNB = tokenBalance - tokensForLiquidity;
+    uint256 amountToSwapForNative = tokenBalance - tokensForLiquidity;
 
     uint256 initialNativeBalance = address(this).balance;
 
-    swapTokensForBNB(amountToSwapForBNB);
+    swapTokensForNative(amountToSwapForNative);
 
     uint256 nativeBalance = address(this).balance - initialNativeBalance;
 
@@ -304,7 +305,7 @@ contract FocalPoint is ERC20, Ownable {
 
     addLiquidity(tokensForLiquidity, nativeForLiquidity);
     emit SwapAndLiquify(
-      amountToSwapForBNB,
+      amountToSwapForNative,
       nativeForLiquidity,
       tokensForLiquidity
     );
@@ -316,11 +317,11 @@ contract FocalPoint is ERC20, Ownable {
     }
   }
 
-  function swapTokensForBNB(uint256 tokenAmount) private {
+  function swapTokensForNative(uint256 tokenAmount) private {
     address[] memory path = new address[](2);
     path[0] = address(this);
     path[1] = _router.WETH();
-    _approve(address(this), address(swapPairAddress), tokenAmount);
+    _approve(address(this), address(_routerAddress), tokenAmount);
     _router.swapExactTokensForETHSupportingFeeOnTransferTokens(
       tokenAmount,
       0, // accept any amount of ETH
@@ -331,7 +332,7 @@ contract FocalPoint is ERC20, Ownable {
   }
 
   function addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
-    _approve(address(this), address(swapPairAddress), tokenAmount);
+    _approve(address(this), address(_routerAddress), tokenAmount);
     _router.addLiquidityETH{value: ethAmount}(
       address(this),
       tokenAmount,

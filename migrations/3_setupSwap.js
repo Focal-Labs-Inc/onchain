@@ -18,6 +18,7 @@ module.exports = async function (deployer, network, accounts) {
   var DEPLOYER = accounts[0];
   var MARKETING = accounts[1];
   var PLATFORM = accounts[2];
+  var TRADER = accounts[3];
 
   const TokenInstance = await TokenContract.deployed();
   console.log("Focal at: " + TokenInstance.address);
@@ -29,33 +30,77 @@ module.exports = async function (deployer, network, accounts) {
   const RouterInstance = await RouterContract.at(ROUTERADDRESS);
   console.log(`Connected to router at ${ROUTERADDRESS}!`);
 
-  await TokenInstance.approve(
-    ROUTERADDRESS,
-    this.web3.utils.toWei("100000000", "ether"),
-    {
-      from: DEPLOYER,
-      gas: 4000000,
-    }
-  );
-
   var tokens = this.web3.utils.fromWei(
     (await TokenInstance.balanceOf(DEPLOYER)).toString(),
     "ether"
   );
-  var tokensForLiq = this.web3.utils.toWei((tokens * 0.686).toString(), "ether");
-  console.log(`${tokens.toString()} available for liq, adding ${tokensForLiq.toString()}`);
+  var tokensForLiq = this.web3.utils.toWei(
+    (tokens * 0.686).toString(),
+    "ether"
+  );
+  var supply = (await TokenInstance.balanceOf(DEPLOYER)).toString();
+  console.log(`${supply} available for liq, adding ${tokensForLiq.toString()}`);
+  await TokenInstance.approve(ROUTERADDRESS, supply, {
+    from: DEPLOYER,
+    gas: 4000000,
+  });
   // not working?? Nothing happens...
-  var x = await RouterInstance.addLiquidityETH(
+  await RouterInstance.addLiquidityETH(
     TokenInstance.address,
     tokensForLiq,
     0,
     0,
     DEPLOYER,
-    1645279988,
+    Math.round(new Date().getTime() / 1000) + 1000,
     {
-      value: 400000000000000000,
+      from: DEPLOYER,
+      value: this.web3.utils.toWei("0.4", "ether"),
       gas: 5000000,
     }
   );
-  console.log(`adding liquidity: ${x}`);
+  console.log("Adding liquidity finished.");
+  await TokenInstance.enableTrading();
+  await TokenInstance.setSwapAndLiquifyEnabled(true);
+  console.log("Token setup finished.");
+
+  console.log(`Trading with account: ${TRADER}`);
+  await TokenInstance.approve(ROUTERADDRESS, supply, { from: TRADER });
+  for (var x = 0; x < 10; x++) {
+    console.log(
+      `Executing trade ${x}/10... Token Balance: ${(
+        await TokenInstance.balanceOf(TRADER)
+      ).toString()}`
+    );
+    await RouterInstance.swapExactETHForTokens(
+      0,
+      [await RouterInstance.WETH(), TokenInstance.address],
+      TRADER,
+      Math.round(new Date().getTime() / 1000) + 1000,
+      {
+        from: TRADER,
+        value: this.web3.utils.toWei("0.001", "ether"),
+        gas: 5000000,
+      }
+    );
+  }
+
+  console.log("Preparing to sell to trigger swapandliquify");
+  console.log(
+    `Token Balance for contract: ${(
+      await TokenInstance.balanceOf(TokenInstance.address)
+    ).toString()}`
+  );
+  var sellRes = await RouterInstance.swapExactTokensForETHSupportingFeeOnTransferTokens(
+    "2000000000000000000000",
+    0,
+    [TokenInstance.address, await RouterInstance.WETH()],
+    TRADER,
+    Math.round(new Date().getTime() / 1000) + 1000,
+    {
+      from: TRADER,
+      gas: 5000000,
+    }
+  );
+
+  console.log(sellRes.receipt.rawLogs);
 };

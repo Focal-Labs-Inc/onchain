@@ -24,7 +24,7 @@ module.exports = {
     },
     testnet: {
       provider: () => new HDWalletProvider(
-        mnemonic, "https://data-seed-prebsc-1-s1.binance.org:8545"
+        mnemonic, "https://bsc.getblock.io/testnet/?api_key=ca849af4-9686-4934-beec-ec61ef23118b"
       ),
       port: 443,
       network_id: "97",

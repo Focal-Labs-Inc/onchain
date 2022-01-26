@@ -19,6 +19,6 @@ module.exports = async function (deployer, network, accounts) {
   var DEPLOYER = accounts[0];
   var MARKETING = accounts[1];
   var PLATFORM = accounts[2];
-  await deployer.deploy(TokenContract, ROUTERADDRESS, MARKETING, PLATFORM, {from: DEPLOYER});
+  await deployer.deploy(TokenContract, ROUTERADDRESS, MARKETING, PLATFORM);
 };
 
