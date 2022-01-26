@@ -25,8 +25,8 @@ contract FocalPoint is ERC20, Ownable {
   bool private _liquifying;
 
   bool public tradingEnabled = false;
-  uint256 public maxTxAmount = 75000 * 10**decimals(); // 0.5%
-  uint256 private _minSwapTokens = 7500 * 10**decimals(); // 0.05%
+  uint256 public maxTxAmount;
+  uint256 private _minSwapTokens;
 
   event UpdatePlatformInfo(uint256 buyFee, uint256 sellFee, address addy);
   event UpdateMarketingInfo(uint256 buyFee, uint256 sellFee, address addy);
@@ -61,9 +61,14 @@ contract FocalPoint is ERC20, Ownable {
   constructor(
     address routerAddress,
     address mAddress,
-    address dAddress
+    address pAddress
   ) ERC20("Focal Point", "FOCAL") {
-    _mint(msg.sender, 15000000 * 10**decimals());
+    uint256 supply = 15000000;
+
+    // mint total supply and set transaction limits
+    _mint(msg.sender, supply * 10**decimals());
+    maxTxAmount = (supply / 200) * 10**decimals(); // 0.5%
+    _minSwapTokens = (supply / 2000) * 10**decimals(); // 0.05%
 
     // create pair on the swapping DEX with WETH
     _routerAddress = routerAddress;
@@ -76,7 +81,7 @@ contract FocalPoint is ERC20, Ownable {
     // setup fee information
     liquidityAddress = msg.sender;
     marketingAddress = mAddress;
-    platformAddress = dAddress;
+    platformAddress = pAddress;
 
     platformBuyFee = 2;
     marketingBuyFee = 2;
@@ -89,11 +94,12 @@ contract FocalPoint is ERC20, Ownable {
     setFeeless(address(this), true);
     setFeeless(msg.sender, true);
     setFeeless(mAddress, true);
-    setFeeless(dAddress, true);
+    setFeeless(pAddress, true);
   }
 
   // To receive ETH from router when swapping
   receive() external payable {}
+
   function enableTrading() public onlyOwner {
     require(tradingEnabled == false);
     tradingEnabled = true;
@@ -169,13 +175,41 @@ contract FocalPoint is ERC20, Ownable {
     liquidityBuyFee = buyFee;
     emit UpdateLiqudityFee(buyFee, liquiditySellFee);
   }
-  
+
   function setSwapAndLiquifyEnabled(bool _enabled) public onlyOwner {
     swapAndLiquifyEnabled = _enabled;
     emit SwapAndLiquifyUpdated(_enabled);
   }
 
   // token transfer logic
+  function _transfer(
+    address sender,
+    address recipient,
+    uint256 amount
+  ) internal virtual override {
+    uint256 transferType = _getTransferType(sender, recipient);
+    
+    // prevent trading until manually enabled 
+    if (transferType == BUY || transferType == SELL) {
+      require(tradingEnabled == true);
+      require(amount <= maxTxAmount);
+    }
+    // if fees are off just skip the checks
+    if (feesEnabled == false) {
+      super._transfer(sender, recipient, amount);
+      return;
+    }
+
+    if (transferType == BUY) {
+      _buyTransfer(sender, recipient, amount);
+    } else if (transferType == SELL) {
+      _sellTransfer(sender, recipient, amount);
+    } else {
+      // normal transfer if not a BUY or SELL
+      super._transfer(sender, recipient, amount);
+    }
+  }
+
   function _calculateTokensForFee(uint256 amount, uint256 feePercent)
     private
     pure
@@ -204,88 +238,74 @@ contract FocalPoint is ERC20, Ownable {
     return transferType;
   }
 
-  function _transfer(
+  // calculate taxes for a BUY (sender is the pair)
+  function _buyTransfer(
     address sender,
     address recipient,
     uint256 amount
-  ) internal virtual override {
-    uint256 transferType = _getTransferType(sender, recipient);
-    if (transferType == BUY || transferType == SELL) {
-      require(tradingEnabled == true);
-      require(amount <= maxTxAmount);
-    }
-    if (feesEnabled == false) {
-      super._transfer(sender, recipient, amount);
-      return;
-    }
+  ) private {
+    uint256 newLiquidityTokens = _calculateTokensForFee(
+      amount,
+      liquidityBuyFee
+    );
+    uint256 newMarketingTokens = _calculateTokensForFee(
+      amount,
+      marketingBuyFee
+    );
+    uint256 newPlatformTokens = _calculateTokensForFee(amount, platformBuyFee);
+    uint256 txFeeTokens = newLiquidityTokens +
+      newMarketingTokens +
+      newPlatformTokens;
+
+    // track portion of collected tokens for each fee
+    _tokensForLiquidity += newLiquidityTokens;
+    _tokensForMarketing += newMarketingTokens;
+    _tokensForPlatform += newPlatformTokens;
+
+    // send the buyer the promised token amount
+    super._transfer(sender, recipient, amount);
+    // then force-send the tax fees back to self
+    super._transfer(recipient, address(this), txFeeTokens);
+  }
+
+  // calculate taxes for a SELL (pair is the recipient)
+  function _sellTransfer(
+    address sender,
+    address recipient,
+    uint256 amount
+  ) private {
     uint256 tokenBalance = balanceOf(address(this));
-
-    if (transferType == BUY) {
-      // calculate taxes for a BUY (sender is the pair)
-      uint256 newLiquidityTokens = _calculateTokensForFee(
-        amount,
-        liquidityBuyFee
+    // check if we should perform a liquify
+    if (
+      !_liquifying && swapAndLiquifyEnabled && tokenBalance >= _minSwapTokens
+    ) {
+      // contract min balance of tokens must be high enough
+      _swapAndLiquify(
+        _tokensForLiquidity + _tokensForMarketing + _tokensForPlatform
       );
-      uint256 newMarketingTokens = _calculateTokensForFee(
-        amount,
-        marketingBuyFee
-      );
-      uint256 newPlatformTokens = _calculateTokensForFee(
-        amount,
-        platformBuyFee
-      );
-      uint256 txFeeTokens = newLiquidityTokens +
-        newMarketingTokens +
-        newPlatformTokens;
-
-      // track portion of collected tokens for each fee
-      _tokensForLiquidity += newLiquidityTokens;
-      _tokensForMarketing += newMarketingTokens;
-      _tokensForPlatform  += newPlatformTokens;
-
-      // send the buyer the promised token amount
-      super._transfer(sender, recipient, amount);
-      // then force-send the tax fees back to self
-      super._transfer(recipient, address(this), txFeeTokens);
-    } else if (transferType == SELL) {
-      // calculate taxes for a SELL (pair is the recipient)
-
-      // check if we should perform a liquify
-      if (
-        !_liquifying && swapAndLiquifyEnabled && tokenBalance >= _minSwapTokens
-      ) { // contract min balance must be 0.05% (_minSwapTokens)
-        _swapAndLiquify(
-          _tokensForLiquidity + _tokensForMarketing + _tokensForPlatform
-        );
-      }
-      uint256 newLiquidityTokens = _calculateTokensForFee(
-        amount,
-        liquiditySellFee
-      );
-      uint256 newMarketingTokens = _calculateTokensForFee(
-        amount,
-        marketingSellFee
-      );
-      uint256 newPlatformTokens  = _calculateTokensForFee(
-        amount,
-        platformSellFee
-      );
-      uint256 txFeeTokens = newLiquidityTokens +
-        newMarketingTokens +
-        newPlatformTokens;
-
-      // track portion of collected tokens for each fee
-      _tokensForLiquidity += newLiquidityTokens;
-      _tokensForMarketing += newMarketingTokens;
-      _tokensForPlatform  += newPlatformTokens;
-
-      // send the pair the promised token amount
-      super._transfer(sender, recipient, amount);
-      // then force-send the tax fees back to self
-      super._transfer(recipient, address(this), txFeeTokens);
-    } else { // normal transfer if not a BUY or SELL
-      super._transfer(sender, recipient, amount);
     }
+    uint256 newLiquidityTokens = _calculateTokensForFee(
+      amount,
+      liquiditySellFee
+    );
+    uint256 newMarketingTokens = _calculateTokensForFee(
+      amount,
+      marketingSellFee
+    );
+    uint256 newPlatformTokens = _calculateTokensForFee(amount, platformSellFee);
+    uint256 txFeeTokens = newLiquidityTokens +
+      newMarketingTokens +
+      newPlatformTokens;
+
+    // track portion of collected tokens for each fee
+    _tokensForLiquidity += newLiquidityTokens;
+    _tokensForMarketing += newMarketingTokens;
+    _tokensForPlatform += newPlatformTokens;
+
+    // send the pair the promised token amount
+    super._transfer(sender, recipient, amount);
+    // then force-send the tax fees back to self
+    super._transfer(recipient, address(this), txFeeTokens);
   }
 
   // autoliquidity and fee logic
@@ -304,7 +324,7 @@ contract FocalPoint is ERC20, Ownable {
     uint256 nativeBalance = address(this).balance - initialNativeBalance;
     uint256 nativeForMarketing = (nativeBalance * _tokensForMarketing) /
       tokensToLiquify;
-    uint256 nativeForPlatform  = (nativeBalance * _tokensForPlatform) /
+    uint256 nativeForPlatform = (nativeBalance * _tokensForPlatform) /
       tokensToLiquify;
     uint256 nativeForLiquidity = nativeBalance -
       nativeForMarketing -
@@ -313,7 +333,7 @@ contract FocalPoint is ERC20, Ownable {
     // after a liquify reset our tracking variables
     _tokensForLiquidity = 0;
     _tokensForMarketing = 0;
-    _tokensForPlatform  = 0;
+    _tokensForPlatform = 0;
 
     // send the native token to the fee addresses
     (bool success, ) = address(marketingAddress).call{
@@ -363,5 +383,4 @@ contract FocalPoint is ERC20, Ownable {
       block.timestamp
     );
   }
-
 }
