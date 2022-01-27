@@ -5,7 +5,12 @@
 // Runtime Environment's members available in the global scope.
 import { ethers } from "hardhat";
 import hre from "hardhat";
+import "hardhat-network-metadata";
 
+interface MyMetadata {
+  router: string,
+  networkName: string
+}
 async function main() {
   // Hardhat always runs the compile task when running scripts with its command
   // line interface.
@@ -15,11 +20,12 @@ async function main() {
   // await hre.run('compile');
 
   // We get the contract to deploy
-  console.log("Network name=", hre.network.config);
-  var network = process.env.HARDHAT_NETWORK;
+  var metadata = hre.network.config.metadata as MyMetadata;
+  console.log("Network name=", metadata.networkName);
+  var network = metadata.networkName;
   if (network == 'testnet') {
     var ROUTERADDRESS = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
-  } else if (network== "hardhat") {
+  } else if (network== "forknet") {
     var ROUTERADDRESS = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
   } else {
     console.log(`Network '${network}' not supported!`);
@@ -31,7 +37,7 @@ async function main() {
   const PLATFORM = accounts[2];
 
   const FP = await ethers.getContractFactory("FocalPoint");
-  const fp = await FP.deploy(ROUTERADDRESS, MARKETING, PLATFORM);
+  const fp = await FP.deploy(ROUTERADDRESS, MARKETING.address, PLATFORM.address);
 
   await fp.deployed();
 
