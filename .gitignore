@@ -1,4 +1,10 @@
-node_modules/
-build/
-flattened_contracts/
-tags
+node_modules
+.env
+coverage
+coverage.json
+typechain-types
+typechain
+
+#Hardhat files
+cache
+artifacts
