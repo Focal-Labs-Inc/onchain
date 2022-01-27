@@ -8,36 +8,27 @@ import hre from "hardhat";
 import "hardhat-network-metadata";
 
 interface MyMetadata {
-  router: string,
-  networkName: string
+  router: string;
+  networkName: string;
 }
 async function main() {
-  // Hardhat always runs the compile task when running scripts with its command
-  // line interface.
-  //
-  // If this script is run directly using `node` you may want to call compile
-  // manually to make sure everything is compiled
-  // await hre.run('compile');
-
-  // We get the contract to deploy
   var metadata = hre.network.config.metadata as MyMetadata;
   console.log("Network name=", metadata.networkName);
   var network = metadata.networkName;
-  if (network == 'testnet') {
-    var ROUTERADDRESS = "0xD99D1c33F9fC3444f8101754aBC46c52416550D1";
-  } else if (network== "forknet") {
-    var ROUTERADDRESS = "0x10ED43C718714eb63d5aA57B78B54704E256024E";
-  } else {
-    console.log(`Network '${network}' not supported!`);
-    return;
-  }
+  console.log(`Deploying to '${network}'!`);
+  const ROUTERADDRESS = metadata.router;
   const accounts = await hre.ethers.getSigners();
   // const DEPLOYER = accounts[0];
   const MARKETING = accounts[1];
   const PLATFORM = accounts[2];
 
+  // We get the contract to deploy
   const FP = await ethers.getContractFactory("FocalPoint");
-  const fp = await FP.deploy(ROUTERADDRESS, MARKETING.address, PLATFORM.address);
+  const fp = await FP.deploy(
+    ROUTERADDRESS,
+    MARKETING.address,
+    PLATFORM.address
+  );
 
   await fp.deployed();
 
