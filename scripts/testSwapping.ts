@@ -10,6 +10,7 @@ interface MyMetadata {
 function tablify(trade: number, msg: string, value: string) {
   return { trade: trade, name: msg, uint256: value };
 }
+var table: Object[] = [];
 
 async function main() {
   var metadata = hre.network.config.metadata as MyMetadata;
@@ -25,8 +26,8 @@ async function main() {
   const FP = await ethers.getContractFactory("FocalPoint");
   const fp = await FP.deploy(
     ROUTERADDRESS,
-    MARKETING.address,
-    PLATFORM.address
+    PLATFORM.address,
+    MARKETING.address
   );
   const TokenInstance = await fp.deployed();
   console.log("Focal deployed at: " + TokenInstance.address);
@@ -67,118 +68,128 @@ async function main() {
       DEPLOYER.address,
       Math.round(new Date().getTime() / 1000) + 1000,
       {
-        value: ethers.utils.parseEther("400"),
+        value: ethers.utils.parseEther("0.4"),
       }
     )
   ).wait();
   console.log("Adding liquidity finished.");
   await (await TokenInstance.enableTrading()).wait();
   await (await TokenInstance.setSwapAndLiquifyEnabled(true)).wait();
-  await (await TokenInstance.setMaxTransaction("10000000")).wait();
+  // await (await TokenInstance.setMaxTransaction("10000000")).wait();
   console.log("Token setup finished.");
 
-  console.log(`Trading with account: ${TRADER.address}`);
-  const TRADER_ROUTER_SIGNER = router.connect(TRADER);
-  const TRADER_TOKEN_SIGNER = TokenInstance.connect(TRADER);
-  await (await TRADER_TOKEN_SIGNER.approve(ROUTERADDRESS, supply)).wait();
-  const WETH = await TRADER_ROUTER_SIGNER.WETH();
-  await (
-    await TRADER_ROUTER_SIGNER.swapExactETHForTokens(
-      0,
-      [WETH, TokenInstance.address],
-      TRADER.address,
-      Math.round(new Date().getTime() / 1000) + 1000,
-      {
-        value: ethers.utils.parseEther("3"),
-        gasLimit: 400000,
-      }
-    )
-  ).wait();
-  console.log("Initial BUY finished.");
-  var table = [];
-  const TRADES = 1000;
-  for (var x = 1; x <= TRADES; x++) {
-    var bal = await TokenInstance.balanceOf(TRADER.address);
-    var buyOrSell = Math.random() < 0.5;
-    if (buyOrSell == true) {
-      console.log(`Executing BUY trade ${x}/${TRADES}... Token Balance: ${bal.toString()}`);
-      await (
-        await TRADER_ROUTER_SIGNER.swapExactETHForTokens(
-          0,
-          [WETH, TokenInstance.address],
-          TRADER.address,
-          Math.round(new Date().getTime() / 1000) + 1000,
-          {
-            value: ethers.utils.parseEther("0.5"),
-            gasLimit: 400000,
-          }
-        )
-    ).wait();
-      table.push(
-        tablify(
-          x,
-          `Contract Balance After BUY`,
-          (await TRADER_TOKEN_SIGNER.balanceOf(TokenInstance.address)).toString()
-        )
-      );
+  // console.log(`Trading with account: ${TRADER.address}`);
+  // const TRADER_ROUTER_SIGNER = router.connect(TRADER);
+  // const TRADER_TOKEN_SIGNER = TokenInstance.connect(TRADER);
+  // await (await TRADER_TOKEN_SIGNER.approve(ROUTERADDRESS, supply)).wait();
+  // const WETH = await TRADER_ROUTER_SIGNER.WETH();
+  // await (
+  //   await TRADER_ROUTER_SIGNER.swapExactETHForTokens(
+  //     0,
+  //     [WETH, TokenInstance.address],
+  //     TRADER.address,
+  //     Math.round(new Date().getTime() / 1000) + 1000,
+  //     {
+  //       value: ethers.utils.parseEther("3"),
+  //       gasLimit: 400000,
+  //     }
+  //   )
+  // ).wait();
+  // console.log("Initial BUY finished.");
+  // const TRADES = 1000;
+  // for (var x = 1; x <= TRADES; x++) {
+  //   var bal = await TokenInstance.balanceOf(TRADER.address);
+  //   var buyOrSell = Math.random() < 0.3;
+  //   if (buyOrSell == true) {
+  //     console.log(
+  //       `Executing BUY trade ${x}/${TRADES}... Token Balance: ${bal.toString()}`
+  //     );
+  //     await (
+  //       await TRADER_ROUTER_SIGNER.swapExactETHForTokens(
+  //         0,
+  //         [WETH, TokenInstance.address],
+  //         TRADER.address,
+  //         Math.round(new Date().getTime() / 1000) + 1000,
+  //         {
+  //           value: ethers.utils.parseEther("0.5"),
+  //           gasLimit: 400000,
+  //         }
+  //       )
+  //     ).wait();
+  //     table.push(
+  //       tablify(
+  //         x,
+  //         `Contract Balance After BUY`,
+  //         (
+  //           await TRADER_TOKEN_SIGNER.balanceOf(TokenInstance.address)
+  //         ).toString()
+  //       )
+  //     );
+  //   } else {
+  //     console.log(
+  //       `Executing SELL trade ${x}/${TRADES}... Token Balance: ${bal.toString()}`
+  //     );
+  //     await (
+  //       await TRADER_ROUTER_SIGNER.swapExactTokensForETHSupportingFeeOnTransferTokens(
+  //         bal.div(5).toString(),
+  //         0,
+  //         [TokenInstance.address, WETH],
+  //         TRADER.address,
+  //         Math.round(new Date().getTime() / 1000) + 1000,
+  //         {
+  //           gasLimit: 500000,
+  //         }
+  //       )
+  //     ).wait();
+  //     table.push(
+  //       tablify(
+  //         x,
+  //         `Contract Balance After SELL`,
+  //         (
+  //           await TRADER_TOKEN_SIGNER.balanceOf(TokenInstance.address)
+  //         ).toString()
+  //       )
+  //     );
+  //   }
+  //   var platformFee = await TokenInstance.platformFee();
+  //   var marketingFee = await TokenInstance.marketingFee();
+  //   var liqFee = await TokenInstance.liquidityFee();
+  //   table.push(
+  //     tablify(
+  //       x,
+  //       `Contract tokens for Platform`,
+  //       platformFee.tokensCollected.toString()
+  //     )
+  //   );
+  //   table.push(
+  //     tablify(
+  //       x,
+  //       `Contract tokens for Marketing`,
+  //       marketingFee.tokensCollected.toString()
+  //     )
+  //   );
+  //   table.push(
+  //     tablify(
+  //       x,
+  //       `Contract tokens for Liquidity`,
+  //       liqFee.tokensCollected.toString()
+  //     )
+  //   );
+  // }
+  // console.table(table);
 
-    } else {
-      console.log(`Executing SELL trade ${x}/${TRADES}... Token Balance: ${bal.toString()}`);
-      await (
-        await TRADER_ROUTER_SIGNER.swapExactTokensForETHSupportingFeeOnTransferTokens(
-          bal.div(5).toString(),
-          0,
-          [TokenInstance.address, WETH],
-          TRADER.address,
-          Math.round(new Date().getTime() / 1000) + 1000
-        )
-      ).wait();
-      table.push(
-        tablify(
-          x,
-          `Contract Balance After SELL`,
-          (await TRADER_TOKEN_SIGNER.balanceOf(TokenInstance.address)).toString()
-        )
-      );
-    }
-    var platformFee = await TokenInstance.liquidityFee();
-    var marketingFee = await TokenInstance.liquidityFee();
-    var liqFee = await TokenInstance.liquidityFee();
-    table.push(
-      tablify(
-        x,
-        `Contract tokens for Platform`,
-        platformFee.tokensCollected.toString()
-      )
-    );
-    table.push(
-      tablify(
-        x,
-        `Contract tokens for Marketing`,
-        marketingFee.tokensCollected.toString()
-      )
-    );
-    table.push(
-      tablify(
-        x,
-        `Contract tokens for Liquidity`,
-        liqFee.tokensCollected.toString()
-      )
-    );
-  }
-  console.table(table);
+  // var prov = hre.ethers.provider;
 
-  var prov = hre.ethers.provider;
+  // const platformBalance = await prov.getBalance(PLATFORM.address);
+  // const marketingBalance = await prov.getBalance(MARKETING.address);
+  // const traderBalance = await prov.getBalance(TRADER.address);
 
-  const platformBalance = await prov.getBalance(PLATFORM.address);
-  const marketingBalance = await prov.getBalance(MARKETING.address);
-  const traderBalance = await prov.getBalance(TRADER.address);
+  // console.log(`Native in TRADER: ${traderBalance.toString()}`);
+  // console.log(`Native in platform beneficiary: ${platformBalance.toString()}`);
+  // console.log(
+  //   `Native in marketing beneficiary: ${marketingBalance.toString()}`
+  // );
 
-  console.log(`Native in TRADER: ${traderBalance.toString()}`);
-  console.log(`Native in platform beneficiary: ${platformBalance.toString()}`);
-  console.log(
-    `Native in marketing beneficiary: ${marketingBalance.toString()}`
-  );
   // console.log("Preparing to sell to trigger swapandliquify");
   // console.log(
   //   `Contract Token Balance before sell: ${(
@@ -253,5 +264,6 @@ async function main() {
 // and properly handle errors.
 main().catch((error) => {
   console.error(error);
+  console.table(table);
   process.exitCode = 1;
 });

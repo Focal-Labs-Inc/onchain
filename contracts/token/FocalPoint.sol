@@ -3,7 +3,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 
 import "./../ISwap.sol";
-
+import "hardhat/console.sol";
 //
 //
 //                ,,µ▄▄▄▄▄▄▓▄▄▄╦╥,
@@ -78,6 +78,7 @@ contract FocalPoint is ERC20, ERC20Burnable, Ownable {
   TokenFee public platformFee;
   TokenFee public marketingFee;
   TokenFee public liquidityFee;
+  bool public liquifyOrDistribute = true;
 
   event AddFeeExemption(address addy);
   event RemoveFeeExemption(address addy);
@@ -348,18 +349,29 @@ contract FocalPoint is ERC20, ERC20Burnable, Ownable {
     address recipient,
     uint256 amount
   ) private {
+    if (liquifyOrDistribute && !_liquifying && swapAndLiquifyEnabled) {
+      _swapAndLiquify();
+    } else if (!liquifyOrDistribute && !_liquifying && swapAndLiquifyEnabled) {
+      _swapAndDistribute();
+    }
+    // if (
+    //   !_liquifying &&
+    //   swapAndLiquifyEnabled &&
+    //   (platformFee.tokensCollected + marketingFee.tokensCollected) >=
+    //   _minSwapTokens
+    // ) {
+    //   _swapAndDistribute();
+    // }
     // check if we should perform a liquify
     // contract min balance of tokens must be high enough
-    uint256 tokenBalance = balanceOf(address(this));
-    if (
-      !_liquifying && swapAndLiquifyEnabled && tokenBalance >= _minSwapTokens
-    ) {
-      _swapAndLiquify(
-        platformFee.tokensCollected +
-          marketingFee.tokensCollected +
-          liquidityFee.tokensCollected
-      );
-    }
+    // if (
+    //   !_liquifying &&
+    //   swapAndLiquifyEnabled &&
+    //   liquidityFee.tokensCollected >= _minSwapTokens
+    // ) {
+    //   _swapAndLiquify();
+    // }
+
     uint256 newPlatformTokens = _calculateTokensForFee(
       amount,
       platformFee.sellFee
@@ -387,50 +399,46 @@ contract FocalPoint is ERC20, ERC20Burnable, Ownable {
     super._transfer(recipient, address(this), txFeeTokens);
   }
 
-  // autoliquidity and fee logic
-  function _swapAndLiquify(uint256 tokensToLiquify) private lockTheSwap {
-    uint256 tokenBalance = balanceOf(address(this));
-    uint256 initialNativeBalance = address(this).balance;
-
-    // if the total balance is higher than our accounting the contract
-    // received TOKEN outside of our control. Burn em!
-    if (tokenBalance > tokensToLiquify) {
-      uint256 tokensToBurn = tokenBalance - tokensToLiquify;
-      burn(tokensToBurn);
+  // distribute fee logic
+  function _swapAndDistribute() private lockTheSwap {
+    if (
+      platformFee.tokensCollected + marketingFee.tokensCollected <
+      _minSwapTokens
+    ) {
+      return;
     }
-    // Half of the collected tokens need to be sold
-    // the rest are reserved for adding to liquidity
-    uint256 tokensForLiquidity = tokensToLiquify / 2;
-    uint256 amountToSwapForNative = tokenBalance - tokensForLiquidity;
+    uint256 initialNativeBalance = address(this).balance;
+    uint256 totalTokensAvailable = platformFee.tokensCollected +
+      marketingFee.tokensCollected;
+    // ratio to take from each fee collection tracker
+    uint256 platformForNative = (_minSwapTokens * platformFee.tokensCollected) /
+      totalTokensAvailable;
+    uint256 marketingForNative = _minSwapTokens - platformForNative;
 
     // sell the tokens and divide recieved amount to fee addresses
-    _swapTokensForNative(amountToSwapForNative);
+    _swapTokensForNative(platformForNative + marketingForNative);
+
+    // we need to calculate the ratio for each receiver, similar to the ratio we
+    // remove from each in the above section
     uint256 nativeBalance = address(this).balance - initialNativeBalance;
-    uint256 nativeForPlatform = (nativeBalance * platformFee.tokensCollected) /
-      tokensToLiquify;
-    uint256 nativeForMarketing = (nativeBalance *
-      marketingFee.tokensCollected) / tokensToLiquify;
-    uint256 nativeForLiquidity = nativeBalance -
-      nativeForMarketing -
-      nativeForPlatform;
-
-    // after a liquify reset our tracking variables
-    platformFee.tokensCollected = 0;
-    marketingFee.tokensCollected = 0;
-
-    // add the remaining native token as liquidity along with
-    // reserved tokens
-    _addLiquidity(tokensForLiquidity, nativeForLiquidity);
-    emit SwapAndLiquify(
-      amountToSwapForNative,
-      nativeForLiquidity,
-      tokensForLiquidity
+    console.log("[SOL] Native balance: %s", nativeBalance);
+    uint256 nativeForPlatform = (nativeBalance * platformForNative) /
+      _minSwapTokens;
+    console.log(
+      "[SOL] balance for platform:  N%s,T%s",
+      nativeForPlatform,
+      platformForNative
     );
-    // since we sent off some of our Native Token for the fees
-    // not all of our reserved tokens can be added as liquidity.
-    // Add the leftovers to accounting
-    liquidityFee.tokensCollected = balanceOf(address(this));
+    uint256 nativeForMarketing = nativeBalance - nativeForPlatform;
+    console.log(
+      "[SOL] balance for marketing: N%s,T%s",
+      nativeForMarketing,
+      marketingForNative
+    );
 
+    // after a distribute update our tracking variables
+    platformFee.tokensCollected -= platformForNative;
+    marketingFee.tokensCollected -= marketingForNative;
     // send the native token to the fee addresses
     (bool success, ) = address(platformFee.beneficiary).call{
       value: nativeForPlatform
@@ -443,6 +451,64 @@ contract FocalPoint is ERC20, ERC20Burnable, Ownable {
       (success, ) = address(platformFee.beneficiary).call{
         value: address(this).balance
       }("");
+    }
+
+    if (
+      liquidityFee.tokensCollected >
+      platformFee.tokensCollected + marketingFee.tokensCollected
+    ) {
+      liquifyOrDistribute = !liquifyOrDistribute;
+    }
+    // if (liquidityFee.tokensCollected >= _minSwapTokens) {
+    //   _swapAndLiquify();
+    // }
+  }
+
+  // autoliquidity and fee logic
+  function _swapAndLiquify() private lockTheSwap {
+    if (liquidityFee.tokensCollected < _minSwapTokens) {
+      return;
+    }
+    uint256 initialNativeBalance = address(this).balance;
+
+    // if the total balance is higher than our accounting the contract
+    // received TOKEN outside of our control. Burn em!
+
+    // Half of the collected tokens need to be sold
+    // the rest are reserved for adding to liquidity
+    uint256 tokensForLiquidity = _minSwapTokens / 2;
+    uint256 amountToSwapForNative = _minSwapTokens - tokensForLiquidity;
+
+    // sell the tokens
+    console.log("HELLO");
+    _swapTokensForNative(amountToSwapForNative);
+    uint256 nativeBalance = address(this).balance - initialNativeBalance;
+    console.log("HELLO");
+
+    // add the native token as liquidity along with
+    // reserved tokens
+    _addLiquidity(tokensForLiquidity, nativeBalance);
+    emit SwapAndLiquify(
+      amountToSwapForNative,
+      nativeBalance,
+      tokensForLiquidity
+    );
+    console.log("HELLO");
+
+    // not all of our reserved tokens can be added as liquidity due to slippage
+    liquidityFee.tokensCollected -= tokensForLiquidity + amountToSwapForNative;
+    // Add the leftovers to accounting
+    liquidityFee.tokensCollected +=
+      balanceOf(address(this)) -
+      platformFee.tokensCollected -
+      marketingFee.tokensCollected -
+      liquidityFee.tokensCollected;
+
+    if (
+      liquidityFee.tokensCollected <
+      platformFee.tokensCollected + marketingFee.tokensCollected
+    ) {
+      liquifyOrDistribute = !liquifyOrDistribute;
     }
   }
 
