@@ -1,10 +1,10 @@
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import { expect } from "chai";
+import chai, { expect, assert } from "chai";
 import { ethers, waffle } from "hardhat";
 import hre from "hardhat";
 
 import { FocalPoint, FocalPoint__factory, Router } from "./../typechain-types";
-
+chai.config.includeStack = true;
 interface MyMetadata {
   router: string;
   networkName: string;
@@ -172,7 +172,6 @@ describe("FocalPoint", function () {
         }
       )
     ).to.be.revertedWith("Pancake: TRANSFER_FAILED");
-
   });
 
   it("Should take appropriate fees", async function () {
@@ -224,16 +223,16 @@ describe("FocalPoint", function () {
       .withArgs(pairAddress, FocalPoint.address, expectedSellFeeAmount); // taxes taken
   });
 
-  it("Should liquify if contract balance high enough", async function () {
+  it("Should liquify and distribute if contract balance high enough", async function () {
     await addLiquidity();
     await (await dTokenOperator.enableTrading()).wait();
     await (await dTokenOperator.setSwapAndLiquifyEnabled(true)).wait();
 
-    // buy enough tokens to get the liquidity wallet to the minSwapTokens amount
-    // set the tax to all go to liq and really high for simplicity
-    await (await dTokenOperator.setBuyFees(0, 0, 20)).wait();
-    let buyAmount: any = ethers.utils.parseEther("37500");
-    let expectedBuyFeeAmount: any = ethers.utils.parseEther("7500"); // 37500 * 0.2
+    // buy enough tokens to get both the platform fee and liq fee
+    // to the minSwapTokens amount, we set the tax really high for simplicity
+    await (await dTokenOperator.setBuyFees(10, 0, 10)).wait();
+    let buyAmount: any = ethers.utils.parseEther("75000");
+    let expectedBuyFeeAmount: any = ethers.utils.parseEther("15000"); // 75000 * 0.2
     await expect(
       tRouterOperator.swapETHForExactTokens(
         buyAmount,
@@ -241,7 +240,7 @@ describe("FocalPoint", function () {
         TRADER.address,
         Math.round(new Date().getTime() / 1000) + 1000,
         {
-          value: ethers.utils.parseEther("3.5"),
+          value: ethers.utils.parseEther("7"),
         }
       )
     )
@@ -250,8 +249,9 @@ describe("FocalPoint", function () {
       .to.emit(FocalPoint, "Transfer")
       .withArgs(TRADER.address, FocalPoint.address, expectedBuyFeeAmount); // taxes taken
 
+    // trigger liquify and validate that tokens get sold by the contract
     await expect(
-      await tRouterOperator.swapExactTokensForETHSupportingFeeOnTransferTokens(
+      tRouterOperator.swapExactTokensForETHSupportingFeeOnTransferTokens(
         ethers.utils.parseEther("1"),
         0,
         [FocalPoint.address, WETH],
@@ -260,10 +260,38 @@ describe("FocalPoint", function () {
       )
     )
       .to.emit(FocalPoint, "Transfer")
+      .withArgs(TRADER.address, pairAddress, ethers.utils.parseEther("1"))
+      .to.emit(FocalPoint, "Transfer")
       .withArgs(
         FocalPoint.address,
         pairAddress,
         ethers.utils.parseEther("3750")
-      ); // contract sold
+      ); // taxes liquified
+    let prov = waffle.provider;
+    let initPR = await prov.getBalance(PLATFORM.address);
+
+    // trigger distribute and validate what we're looking for:
+    // distribution of Native tokens to the platform wallet
+    await expect(
+      tRouterOperator.swapExactTokensForETHSupportingFeeOnTransferTokens(
+        ethers.utils.parseEther("1"),
+        0,
+        [FocalPoint.address, WETH],
+        TRADER.address,
+        Math.round(new Date().getTime() / 1000) + 1000
+      )
+    )
+      .to.emit(FocalPoint, "Transfer")
+      .withArgs(TRADER.address, pairAddress, ethers.utils.parseEther("1"))
+      .to.emit(FocalPoint, "Transfer")
+      .withArgs(
+        FocalPoint.address,
+        pairAddress,
+        ethers.utils.parseEther("7500")
+      ); // fee tokens sold and send return native the platform addy
+    assert(
+      (await prov.getBalance(PLATFORM.address)) > initPR,
+      "Native balance didn't increase"
+    );
   });
 });
