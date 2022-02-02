@@ -107,7 +107,7 @@ describe("FocalPoint Presale", function () {
     ).to.not.be.reverted;
 
     assert(
-      (await wPresaleOperator.ownedTokens()).toString() ==
+      (await wPresaleOperator.ownedTokens()).toString() ===
         ethers.utils.parseEther("1122.5").toString()
     );
   });
@@ -137,7 +137,7 @@ describe("FocalPoint Presale", function () {
       })
     ).to.not.be.reverted;
     assert(
-      (await wPresaleOperator.ownedTokens()).toString() ==
+      (await wPresaleOperator.ownedTokens()).toString() ===
         ethers.utils.parseEther("1122.5").toString()
     );
 
@@ -160,7 +160,7 @@ describe("FocalPoint Presale", function () {
     ]);
 
     assert(
-      (await wPresaleOperator.ownedTokens()).toString() ==
+      (await wPresaleOperator.ownedTokens()).toString() ===
         ethers.utils.parseEther("561.25").toString()
     );
 
@@ -174,35 +174,7 @@ describe("FocalPoint Presale", function () {
       "User should have unclaimed FOCAL tokens"
     );
   });
-
-  it("Should prevent buying more than the max tokens", async function () {
-    await (await dPresaleOperator.open()).wait();
-
-    // buy 22450 tokens
-    await expect(
-      wPresaleOperator.buy(WHITELISTER.address, {
-        value: ethers.utils.parseEther("2"),
-      })
-    ).to.not.be.reverted;
-
-    assert(
-      (await wPresaleOperator.ownedTokens()).toString() ==
-        ethers.utils.parseEther("22450").toString()
-    );
-
-    await expect(
-      wPresaleOperator.buy(WHITELISTER.address, {
-        value: ethers.utils.parseEther("0.1"),
-      })
-    ).to.be.revertedWith("Can't buy more than 2 BNB worth of tokens");
-
-    // verify our owned tokens didn't change
-    assert(
-      (await wPresaleOperator.ownedTokens()).toString() ==
-        ethers.utils.parseEther("22450").toString()
-    );
-  });
-
+  
   it("Should allow anyone to contribute after whitelist period", async function () {
     await expect(
       nPresaleOperator.buy(NOBODY.address, {
@@ -231,10 +203,39 @@ describe("FocalPoint Presale", function () {
     ).to.not.be.reverted;
 
     assert(
-      (await nPresaleOperator.ownedTokens()).toString() ==
+      (await nPresaleOperator.ownedTokens()).toString() ===
         ethers.utils.parseEther("1122.5").toString()
     );
   });
+
+  it("Should prevent buying more than the max tokens", async function () {
+    await (await dPresaleOperator.open()).wait();
+
+    // buy 22450 tokens
+    await expect(
+      wPresaleOperator.buy(WHITELISTER.address, {
+        value: ethers.utils.parseEther("2"),
+      })
+    ).to.not.be.reverted;
+
+    assert(
+      (await wPresaleOperator.ownedTokens()).toString() ===
+        ethers.utils.parseEther("22450").toString()
+    );
+
+    await expect(
+      wPresaleOperator.buy(WHITELISTER.address, {
+        value: ethers.utils.parseEther("0.1"),
+      })
+    ).to.be.revertedWith("Can't buy more than 2 BNB worth of tokens");
+
+    // verify our owned tokens didn't change
+    assert(
+      (await wPresaleOperator.ownedTokens()).toString() ===
+        ethers.utils.parseEther("22450").toString()
+    );
+  });
+
 
   it("Should prevent claim before close", async function () {
     await (await dPresaleOperator.open()).wait();
@@ -285,5 +286,37 @@ describe("FocalPoint Presale", function () {
         value: ethers.utils.parseEther("2.1"),
       })
     ).to.be.revertedWith("BNB is greater than max value");
+  });
+  
+  it("Should send remaining tokens to owner", async function () {
+    let initBal = await dTokenOperator.balanceOf(DEPLOYER.address);
+    await (
+      await dPresaleOperator.withdrawUnsoldTokens()
+    ).wait();
+    
+    assert(
+      (await dTokenOperator.balanceOf(DEPLOYER.address)).toString() === initBal.add(ethers.utils.parseEther("6760000")).toString(),
+      "Token balance didn't increase"
+    );
+  });
+  
+  it("Should send contributed BNB to owner", async function () {
+    await (await dPresaleOperator.open()).wait();
+
+    await expect(
+      wPresaleOperator.buy(WHITELISTER.address, {
+        value: ethers.utils.parseEther("2"),
+      })
+    ).to.not.be.reverted;
+
+    let initBal = await waffle.provider.getBalance(DEPLOYER.address);
+    await (
+      await dPresaleOperator.withdrawFunds()
+    ).wait();
+
+    assert(
+      (await waffle.provider.getBalance(DEPLOYER.address)) > initBal,
+      "Native balance didn't increase"
+    );
   });
 });
