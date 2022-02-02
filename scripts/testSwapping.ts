@@ -20,8 +20,8 @@ async function main() {
 
   const ROUTERADDRESS = metadata.router;
   const DEPLOYER = accounts[0];
-  const MARKETING = accounts[1];
-  const PLATFORM = accounts[2];
+  const PLATFORM = accounts[1];
+  const MARKETING = accounts[2];
   const TRADER = accounts[3];
   const FP = await ethers.getContractFactory("FocalPoint");
   const fp = await FP.deploy(
@@ -37,8 +37,8 @@ async function main() {
       address: TokenInstance.address,
       constructorArguments: [
         ROUTERADDRESS,
-        MARKETING.address,
         PLATFORM.address,
+        MARKETING.address,
       ],
     });
   } catch {
@@ -53,16 +53,15 @@ async function main() {
   var tokens = parseInt(
     ethers.utils.formatEther(await TokenInstance.balanceOf(DEPLOYER.address))
   );
-  var tokensForLiq = ethers.utils.parseEther((tokens * 0.686).toString());
   var supply = await (
     await TokenInstance.balanceOf(DEPLOYER.address)
   ).toString();
-  console.log(`${supply} available for liq, adding ${tokensForLiq.toString()}`);
+  console.log(`${tokens} available for liq, adding 4490000!`);
   await (await TokenInstance.approve(ROUTERADDRESS, supply)).wait();
   (
     await DEPLOYER_ROUTER_SIGNER.addLiquidityETH(
       TokenInstance.address,
-      tokensForLiq,
+      ethers.utils.parseEther("4490000"),
       0,
       0,
       DEPLOYER.address,

@@ -72,8 +72,7 @@ contract Presale is ReentrancyGuard, Ownable {
     require(_bnbSent % 0.1 ether == 0, "BNB is not a multiple of 0.1");
     require(bnbReceived <= hardcap, "Hardcap reached");
     require(bnbReceived+_bnbSent <= hardcap, "BNB is greater than remaining cap space");
-
-    require(totalTokensSold < safeToken.balanceOf(address(this)), "No tokens left for sale");
+    require(totalTokensSold < hardcap * tokensPerBNB, "No tokens left for sale");
     
 
     uint256 tokens = _bnbSent * tokensPerBNB;
@@ -93,10 +92,9 @@ contract Presale is ReentrancyGuard, Ownable {
     return tokensUnclaimed[msg.sender];
   }
 
-  function tokensRemaining() external view returns (uint256) {
-    return safeToken.balanceOf(address(this));
+  function unpurchasedTokens() external view returns (uint256) {
+    return (hardcap * tokensPerBNB) - totalTokensSold;
   }
-
 
   function addWhitelisters(address[] calldata accounts) external onlyOwner {
     for (uint256 i = 0; i < accounts.length; i++) {

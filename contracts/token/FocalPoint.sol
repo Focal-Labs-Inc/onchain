@@ -148,6 +148,14 @@ contract FocalPoint is ERC20, Ownable {
     }
   }
 
+  function buyFee() external view returns (uint256) {
+    return platformFee.buyFee + marketingFee.buyFee + liquidityFee.buyFee;
+  }
+
+  function sellFee() external view returns (uint256) {
+    return platformFee.sellFee + marketingFee.sellFee + liquidityFee.sellFee;
+  }
+
   // fee shortcuts
   // set fee addresses, leaving intact if the argument is address(0)
   function setFeeAddresses(
@@ -349,7 +357,6 @@ contract FocalPoint is ERC20, Ownable {
     address recipient,
     uint256 amount
   ) private {
-
     // see if we can distribute fees or add more liquidity
     if (liquifyOrDistribute && !_liquifying && swapAndLiquifyEnabled) {
       _swapAndLiquify();
@@ -428,9 +435,12 @@ contract FocalPoint is ERC20, Ownable {
       }("");
     }
 
+    // if liquify is ready or we have distributed all fees switch modes
     if (
       liquidityFee.tokensCollected >
-      platformFee.tokensCollected + marketingFee.tokensCollected
+      platformFee.tokensCollected + marketingFee.tokensCollected ||
+      platformFee.tokensCollected + marketingFee.tokensCollected <
+      _minSwapTokens
     ) {
       liquifyOrDistribute = !liquifyOrDistribute;
     }
@@ -473,9 +483,11 @@ contract FocalPoint is ERC20, Ownable {
       marketingFee.tokensCollected -
       liquidityFee.tokensCollected;
 
+    // if distribute is ready or we have liquified all fees switch modes
     if (
-      liquidityFee.tokensCollected <
-      platformFee.tokensCollected + marketingFee.tokensCollected
+      platformFee.tokensCollected + marketingFee.tokensCollected >
+      liquidityFee.tokensCollected ||
+      liquidityFee.tokensCollected < _minSwapTokens
     ) {
       liquifyOrDistribute = !liquifyOrDistribute;
     }

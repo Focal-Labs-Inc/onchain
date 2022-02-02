@@ -68,11 +68,12 @@ describe("FocalPoint Presale", function () {
     pPresaleOperator = Presale.connect(PRIVATESALER);
     nPresaleOperator = Presale.connect(NOBODY);
 
-    var supplyForPresale = "6760000"; // 11225*hardcap + private sale (13500*85)
+    // 11225*hardcap + private sale (13500*85)
+    var supplyForPresale = 5612500 + 1147500;
     await (
       await dTokenOperator.transfer(
         Presale.address,
-        ethers.utils.parseEther(supplyForPresale)
+        ethers.utils.parseEther(supplyForPresale.toString())
       )
     ).wait(); // transfer presale+private sale tokens
 
@@ -100,11 +101,11 @@ describe("FocalPoint Presale", function () {
 
     await (await dPresaleOperator.open()).wait();
 
-    await expect(
-      wPresaleOperator.buy(WHITELISTER.address, {
-        value: ethers.utils.parseEther("0.1"),
-      })
-    ).to.not.be.reverted;
+    // test sending directly to contract without calling buy()
+    await expect(wPresaleOperator.signer.sendTransaction({
+      to: Presale.address,
+      value: ethers.utils.parseEther("0.1"),
+    })).to.not.be.reverted;
 
     assert(
       (await wPresaleOperator.ownedTokens()).toString() ===
@@ -207,6 +208,34 @@ describe("FocalPoint Presale", function () {
         ethers.utils.parseEther("1122.5").toString()
     );
   });
+  
+  it("Should prevent private buyers from contributing", async function () {
+    await expect(
+      pPresaleOperator.buy(PRIVATESALER.address, {
+        value: ethers.utils.parseEther("0.1"),
+      })
+    ).to.be.reverted;
+
+    await (await dPresaleOperator.open()).wait();
+
+    await expect(
+      pPresaleOperator.buy(PRIVATESALER.address, {
+        value: ethers.utils.parseEther("0.1"),
+      })
+    ).to.be.revertedWith("private buyers cannot participate");
+
+    // wait 30 minutes for the whitelist to close
+    let startTime = await dPresaleOperator.timestampStarted();
+    await ethers.provider.send("evm_mine", [
+      startTime.toNumber() + 60 * 30 + 30,
+    ]);
+
+    await expect(
+      pPresaleOperator.buy(PRIVATESALER.address, {
+        value: ethers.utils.parseEther("0.1"),
+      })
+    ).to.be.revertedWith("private buyers cannot participate");
+  });
 
   it("Should prevent buying more than the max tokens", async function () {
     await (await dPresaleOperator.open()).wait();
@@ -251,7 +280,7 @@ describe("FocalPoint Presale", function () {
     );
   });
 
-  it("Should prevent contributions on close", async function () {
+  it("Should prevent contributions after close", async function () {
     await (await dPresaleOperator.open()).wait();
     await (await dPresaleOperator.finalize()).wait();
 
@@ -286,6 +315,22 @@ describe("FocalPoint Presale", function () {
         value: ethers.utils.parseEther("2.1"),
       })
     ).to.be.revertedWith("BNB is greater than max value");
+  });
+
+  it("Should report remaining tokens after buy", async function () {
+    await (await dPresaleOperator.open()).wait();
+
+    await (
+      await wPresaleOperator.buy(WHITELISTER.address, {
+        value: ethers.utils.parseEther("1"),
+      })
+    ).wait();
+
+    // tokens remaining = 5612500 - 11225 = 5601275
+    assert(
+      (await dPresaleOperator.unpurchasedTokens()).toString() === ethers.utils.parseEther("5601275").toString(),
+      "Presale remaining didn't decrease"
+    );
   });
   
   it("Should send remaining tokens to owner", async function () {

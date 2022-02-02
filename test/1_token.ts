@@ -188,8 +188,28 @@ describe("FocalPoint", function () {
   });
 
   it("Should prevent decreasing max transaction to below 75000", async function () {
-    await expect(dTokenOperator.setMaxTransaction("74000")).to.be.revertedWith("max tx cannot be lower than 0.5%");
+    await expect(dTokenOperator.setMaxTransaction("74000")).to.be.revertedWith(
+      "max tx cannot be lower than 0.5%"
+    );
     await expect(dTokenOperator.setMaxTransaction("76000")).to.not.be.reverted;
+  });
+
+  it("Should report total buy fees", async function () {
+    await (await dTokenOperator.setBuyFees(2, 2, 2)).wait();
+    assert((await dTokenOperator.buyFee()).toString() == "6");
+  });
+
+  it("Should take appropriate fees", async function () {
+    await (await dTokenOperator.setSellFees(2, 2, 2)).wait();
+    assert((await dTokenOperator.sellFee()).toString() == "6");
+  });
+  
+  it("Should remove feeless address", async function () {
+    await expect(dTokenOperator.setFeeless(TRADER.address, true)).to.emit(FocalPoint, "AddFeeExemption").withArgs(TRADER.address);
+    assert(await dTokenOperator.feelessAddresses(TRADER.address) == true);
+
+    await expect(dTokenOperator.setFeeless(TRADER.address, false)).to.emit(FocalPoint, "RemoveFeeExemption").withArgs(TRADER.address);
+    assert(await dTokenOperator.feelessAddresses(TRADER.address) == false);
   });
 
   it("Should take appropriate fees", async function () {
