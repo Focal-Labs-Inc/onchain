@@ -174,6 +174,24 @@ describe("FocalPoint", function () {
     ).to.be.revertedWith("Pancake: TRANSFER_FAILED");
   });
 
+  it("Should only change non-zero'd fee addresses", async function () {
+    let zero = "0x0000000000000000000000000000000000000000";
+    await expect(dTokenOperator.setFeeAddresses(addrs[0].address, zero, zero))
+      .to.emit(FocalPoint, "UpdatePlatformInfo")
+      .withArgs(2, 12, addrs[0].address);
+    await expect(dTokenOperator.setFeeAddresses(zero, addrs[0].address, zero))
+      .to.emit(FocalPoint, "UpdateMarketingInfo")
+      .withArgs(2, 4, addrs[0].address);
+    await expect(dTokenOperator.setFeeAddresses(zero, zero, addrs[0].address))
+      .to.emit(FocalPoint, "UpdateLiquidityInfo")
+      .withArgs(2, 4, addrs[0].address);
+  });
+
+  it("Should prevent decreasing max transaction to below 75000", async function () {
+    await expect(dTokenOperator.setMaxTransaction("74000")).to.be.revertedWith("max tx cannot be lower than 0.5%");
+    await expect(dTokenOperator.setMaxTransaction("76000")).to.not.be.reverted;
+  });
+
   it("Should take appropriate fees", async function () {
     await addLiquidity();
     await (await dTokenOperator.enableTrading()).wait();

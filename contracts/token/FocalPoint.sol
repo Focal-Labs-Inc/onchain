@@ -1,8 +1,7 @@
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 
-import "./../ISwap.sol";
+import "./ISwap.sol";
 //
 //
 //                ,,µ▄▄▄▄▄▄▓▄▄▄╦╥,
@@ -31,7 +30,7 @@ import "./../ISwap.sol";
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.11;
 
-contract FocalPoint is ERC20, ERC20Burnable, Ownable {
+contract FocalPoint is ERC20, Ownable {
   ISwapRouter private _router;
   address public routerAddress;
   address public swapPairAddress;
