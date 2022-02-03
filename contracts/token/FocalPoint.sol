@@ -113,22 +113,21 @@ contract FocalPoint is ERC20, Ownable {
     );
 
     // setup fee information
-    // initialize platformFee as 2% buy 12% sell
+    // initialize platformFee as 5% buy 13% sell
     // beneficiary pAddress
-    platformFee = TokenFee(2, 12, pAddress, 0);
+    platformFee = TokenFee(5, 13, pAddress, 0);
     setFeeless(pAddress, true);
-    // initialize marketingFee as 2% buy 4% sell
+    // initialize marketingFee as 3% buy 1% sell
     // beneficiary mAddress
-    marketingFee = TokenFee(2, 4, mAddress, 0);
+    marketingFee = TokenFee(3, 1, mAddress, 0);
     setFeeless(mAddress, true);
-    // initialize liquidityFee as 2% buy 4% sell
+    // initialize liquidityFee as 4% buy 2% sell
     // beneficiary msg.sender
-    liquidityFee = TokenFee(2, 4, msg.sender, 0);
+    liquidityFee = TokenFee(4, 2, msg.sender, 0);
     setFeeless(msg.sender, true);
 
     setFeeless(address(this), true);
   }
-
   // To receive ETH from router when swapping
   receive() external payable {}
 
@@ -433,8 +432,8 @@ contract FocalPoint is ERC20, Ownable {
     // sell the tokens and divide recieved amount to fee addresses
     _swapTokensForNative(platformForNative + marketingForNative);
 
-    // we need to calculate the ratio for each receiver, similar to the ratio we
-    // remove from each in the above section
+    // we need to calculate the ratio of native tokens each 
+    // beneficiary should receive.
     uint256 nativeBalance = address(this).balance - initialNativeBalance;
     uint256 nativeForPlatform = (nativeBalance * platformForNative) /
       _minSwapTokens;

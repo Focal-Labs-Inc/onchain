@@ -207,7 +207,7 @@ describe("FocalPoint", function () {
 
     await expect(dTokenOperator.setFeeAddresses(addrs[0].address, zero, zero))
       .to.emit(FocalPoint, "UpdatePlatformInfo")
-      .withArgs(2, 12, addrs[0].address);
+      .withArgs(5, 13, addrs[0].address);
     assert(
       (await FocalPoint.marketingFee()).beneficiary == cachedAddress.marketing
     );
@@ -217,7 +217,7 @@ describe("FocalPoint", function () {
 
     await expect(dTokenOperator.setFeeAddresses(zero, addrs[0].address, zero))
       .to.emit(FocalPoint, "UpdateMarketingInfo")
-      .withArgs(2, 4, addrs[0].address);
+      .withArgs(3, 1, addrs[0].address);
     assert((await FocalPoint.platformFee()).beneficiary == addrs[0].address);
     assert(
       (await FocalPoint.liquidityFee()).beneficiary == cachedAddress.liquidity
@@ -225,7 +225,7 @@ describe("FocalPoint", function () {
 
     await expect(dTokenOperator.setFeeAddresses(zero, zero, addrs[0].address))
       .to.emit(FocalPoint, "UpdateLiquidityInfo")
-      .withArgs(2, 4, addrs[0].address);
+      .withArgs(4, 2, addrs[0].address);
     assert((await FocalPoint.platformFee()).beneficiary == addrs[0].address);
     assert((await FocalPoint.marketingFee()).beneficiary == addrs[0].address);
     assert((await FocalPoint.liquidityFee()).beneficiary == addrs[0].address);
