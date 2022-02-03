@@ -76,7 +76,6 @@ contract FocalPoint is ERC20, Ownable {
   TokenFee public platformFee;
   TokenFee public marketingFee;
   TokenFee public liquidityFee;
-  bool public liquifyOrDistribute = true;
 
   event AddFeeExemption(address addy);
   event RemoveFeeExemption(address addy);
@@ -113,17 +112,17 @@ contract FocalPoint is ERC20, Ownable {
     // initialize platformFee as 2% buy 12% sell
     // beneficiary pAddress
     platformFee = TokenFee(2, 12, pAddress, 0);
+    setFeeless(pAddress, true);
     // initialize marketingFee as 2% buy 4% sell
     // beneficiary mAddress
     marketingFee = TokenFee(2, 4, mAddress, 0);
+    setFeeless(mAddress, true);
     // initialize liquidityFee as 2% buy 4% sell
     // beneficiary msg.sender
     liquidityFee = TokenFee(2, 4, msg.sender, 0);
+    setFeeless(msg.sender, true);
 
     setFeeless(address(this), true);
-    setFeeless(msg.sender, true);
-    setFeeless(mAddress, true);
-    setFeeless(pAddress, true);
   }
 
   // To receive ETH from router when swapping
@@ -247,6 +246,14 @@ contract FocalPoint is ERC20, Ownable {
     );
   }
 
+  function setMinSwapTokens(uint256 amount) public onlyOwner {
+    require(
+      (amount * 10**decimals()) >= (totalSupply() / 2000),
+      "min swap tokens cannot be lower than 0.05%"
+    );
+    _minSwapTokens = amount * 10**decimals();
+  }
+
   function setMaxTransaction(uint256 amount) public onlyOwner {
     require(
       (amount * 10**decimals()) >= (totalSupply() / 200),
@@ -351,6 +358,17 @@ contract FocalPoint is ERC20, Ownable {
     }
   }
 
+  function _liquifyReady() private view returns (bool) {
+    if (liquidityFee.tokensCollected >= _minSwapTokens) {
+      return true;
+    }
+    return false;
+  }
+
+  function _feesForDistributeCollected() private view returns (uint256) {
+    return platformFee.tokensCollected + marketingFee.tokensCollected;
+  }
+
   // calculate taxes for a SELL (pair is the recipient)
   function _sellTransfer(
     address sender,
@@ -358,10 +376,16 @@ contract FocalPoint is ERC20, Ownable {
     uint256 amount
   ) private {
     // see if we can distribute fees or add more liquidity
-    if (liquifyOrDistribute && !_liquifying && swapAndLiquifyEnabled) {
-      _swapAndLiquify();
-    } else if (!liquifyOrDistribute && !_liquifying && swapAndLiquifyEnabled) {
-      _swapAndDistribute();
+    // goal is to run the sell for the larger balance
+    if (!_liquifying && swapAndLiquifyEnabled) {
+      if (
+        _liquifyReady() &&
+        liquidityFee.tokensCollected >= _feesForDistributeCollected()
+      ) {
+        _swapAndLiquify();
+      } else if (_feesForDistributeCollected() >= _minSwapTokens) {
+        _swapAndDistribute();
+      }
     }
 
     // track portion of collected tokens for each fee
@@ -394,12 +418,6 @@ contract FocalPoint is ERC20, Ownable {
 
   // distribute fee logic
   function _swapAndDistribute() private lockTheSwap {
-    if (
-      platformFee.tokensCollected + marketingFee.tokensCollected <
-      _minSwapTokens
-    ) {
-      return;
-    }
     uint256 initialNativeBalance = address(this).balance;
     uint256 totalTokensAvailable = platformFee.tokensCollected +
       marketingFee.tokensCollected;
@@ -421,6 +439,7 @@ contract FocalPoint is ERC20, Ownable {
     // after a distribute update our tracking variables
     platformFee.tokensCollected -= platformForNative;
     marketingFee.tokensCollected -= marketingForNative;
+
     // send the native token to the fee addresses
     (bool success, ) = address(platformFee.beneficiary).call{
       value: nativeForPlatform
@@ -428,33 +447,18 @@ contract FocalPoint is ERC20, Ownable {
     (success, ) = address(marketingFee.beneficiary).call{
       value: nativeForMarketing
     }("");
+
     // move any remaining native tokens to the platform address
     if (address(this).balance > 1e16) {
       (success, ) = address(platformFee.beneficiary).call{
         value: address(this).balance
       }("");
     }
-
-    // if liquify is ready or we have distributed all fees switch modes
-    if (
-      liquidityFee.tokensCollected >
-      platformFee.tokensCollected + marketingFee.tokensCollected ||
-      platformFee.tokensCollected + marketingFee.tokensCollected <
-      _minSwapTokens
-    ) {
-      liquifyOrDistribute = !liquifyOrDistribute;
-    }
   }
 
   // autoliquidity logic
   function _swapAndLiquify() private lockTheSwap {
-    if (liquidityFee.tokensCollected < _minSwapTokens) {
-      return;
-    }
     uint256 initialNativeBalance = address(this).balance;
-
-    // if the total balance is higher than our accounting the contract
-    // received TOKEN outside of our control. Burn em!
 
     // Half of the collected tokens need to be sold
     // the rest are reserved for adding to liquidity
@@ -482,15 +486,6 @@ contract FocalPoint is ERC20, Ownable {
       platformFee.tokensCollected -
       marketingFee.tokensCollected -
       liquidityFee.tokensCollected;
-
-    // if distribute is ready or we have liquified all fees switch modes
-    if (
-      platformFee.tokensCollected + marketingFee.tokensCollected >
-      liquidityFee.tokensCollected ||
-      liquidityFee.tokensCollected < _minSwapTokens
-    ) {
-      liquifyOrDistribute = !liquifyOrDistribute;
-    }
   }
 
   function _swapTokensForNative(uint256 tokenAmount) private {

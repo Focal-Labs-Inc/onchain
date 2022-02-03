@@ -1,9 +1,10 @@
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
-import chai, { expect, assert } from "chai";
+import chai, { assert, expect } from "chai";
 import { ethers, waffle } from "hardhat";
 import hre from "hardhat";
 
 import { FocalPoint, FocalPoint__factory, Router } from "./../typechain-types";
+
 chai.config.includeStack = true;
 interface MyMetadata {
   router: string;
@@ -111,6 +112,28 @@ describe("FocalPoint", function () {
     expect(await FocalPoint.balanceOf(TRADER.address)).to.equal("0");
   });
 
+  it("Should allow trading when fees are 0", async function () {
+    await addLiquidity();
+    await (await dTokenOperator.enableTrading()).wait();
+    await (await dTokenOperator.setBuyFees(0, 0, 0)).wait();
+
+    let buyAmount: any = ethers.utils.parseEther("37500");
+    await expect(
+      tRouterOperator.swapETHForExactTokens(
+        buyAmount,
+        [WETH, FocalPoint.address],
+        TRADER.address,
+        Math.round(new Date().getTime() / 1000) + 1000,
+        {
+          value: ethers.utils.parseEther("3.5"), // ~ 375000/11225 with slippage
+        }
+      )
+    )
+      .to.emit(FocalPoint, "Transfer")
+      .withArgs(pairAddress, TRADER.address, buyAmount);
+    expect(await FocalPoint.balanceOf(TRADER.address)).to.equal(buyAmount);
+  });
+
   it("Should allow deployer to add liquidity", async function () {
     await expect(
       dRouterOperator.addLiquidityETH(
@@ -176,15 +199,122 @@ describe("FocalPoint", function () {
 
   it("Should only change non-zero'd fee addresses", async function () {
     let zero = "0x0000000000000000000000000000000000000000";
+    let cachedAddress = {
+      platform: (await FocalPoint.platformFee()).beneficiary,
+      marketing: (await FocalPoint.marketingFee()).beneficiary,
+      liquidity: (await FocalPoint.liquidityFee()).beneficiary,
+    };
+
     await expect(dTokenOperator.setFeeAddresses(addrs[0].address, zero, zero))
       .to.emit(FocalPoint, "UpdatePlatformInfo")
       .withArgs(2, 12, addrs[0].address);
+    assert(
+      (await FocalPoint.marketingFee()).beneficiary == cachedAddress.marketing
+    );
+    assert(
+      (await FocalPoint.liquidityFee()).beneficiary == cachedAddress.liquidity
+    );
+
     await expect(dTokenOperator.setFeeAddresses(zero, addrs[0].address, zero))
       .to.emit(FocalPoint, "UpdateMarketingInfo")
       .withArgs(2, 4, addrs[0].address);
+    assert((await FocalPoint.platformFee()).beneficiary == addrs[0].address);
+    assert(
+      (await FocalPoint.liquidityFee()).beneficiary == cachedAddress.liquidity
+    );
+
     await expect(dTokenOperator.setFeeAddresses(zero, zero, addrs[0].address))
       .to.emit(FocalPoint, "UpdateLiquidityInfo")
       .withArgs(2, 4, addrs[0].address);
+    assert((await FocalPoint.platformFee()).beneficiary == addrs[0].address);
+    assert((await FocalPoint.marketingFee()).beneficiary == addrs[0].address);
+    assert((await FocalPoint.liquidityFee()).beneficiary == addrs[0].address);
+  });
+
+  it("Should adjust minSwapTokens", async function () {
+    await addLiquidity();
+    await (await dTokenOperator.enableTrading()).wait();
+    await (await dTokenOperator.setSwapAndLiquifyEnabled(true)).wait();
+
+    // set sell tax to zero to ensure sells don't mess balances up
+    await (await dTokenOperator.setSellFees(0, 0, 0)).wait();
+    await expect(dTokenOperator.setMinSwapTokens("10000")).to.not.be.reverted;
+
+    // buy enough tokens to trigger the original value of minSwapTokens
+    await (await dTokenOperator.setBuyFees(20, 0, 0)).wait();
+    let buyAmount: any = ethers.utils.parseEther("37500");
+    let expectedBuyFeeAmount: any = ethers.utils.parseEther("7500"); // 37500 * 0.2
+    await expect(
+      tRouterOperator.swapETHForExactTokens(
+        buyAmount,
+        [WETH, FocalPoint.address],
+        TRADER.address,
+        Math.round(new Date().getTime() / 1000) + 1000,
+        {
+          value: ethers.utils.parseEther("7"),
+        }
+      )
+    )
+      .to.emit(FocalPoint, "Transfer")
+      .withArgs(pairAddress, TRADER.address, buyAmount) // amount you bought
+      .to.emit(FocalPoint, "Transfer")
+      .withArgs(TRADER.address, FocalPoint.address, expectedBuyFeeAmount); // taxes taken
+
+    // sell and confirm liquify did NOT happen
+    await expect(
+      tRouterOperator.swapExactTokensForETHSupportingFeeOnTransferTokens(
+        ethers.utils.parseEther("1"),
+        0,
+        [FocalPoint.address, WETH],
+        TRADER.address,
+        Math.round(new Date().getTime() / 1000) + 1000
+      )
+    )
+      .to.emit(FocalPoint, "Transfer")
+      .withArgs(TRADER.address, pairAddress, ethers.utils.parseEther("1"));
+    let contractBalance = await FocalPoint.balanceOf(FocalPoint.address);
+    assert(contractBalance.toString() === expectedBuyFeeAmount.toString());
+
+    // buy enough tokens to trigger the new minSwapTokens and distribute
+    // 7500+2500 = 10000
+    await (await dTokenOperator.setBuyFees(20, 0, 0)).wait();
+    buyAmount = ethers.utils.parseEther("12500");
+    expectedBuyFeeAmount = ethers.utils.parseEther("2500"); // 12500 * 0.2
+    await expect(
+      tRouterOperator.swapETHForExactTokens(
+        buyAmount,
+        [WETH, FocalPoint.address],
+        TRADER.address,
+        Math.round(new Date().getTime() / 1000) + 1000,
+        {
+          value: ethers.utils.parseEther("7"),
+        }
+      )
+    )
+      .to.emit(FocalPoint, "Transfer")
+      .withArgs(pairAddress, TRADER.address, buyAmount) // amount you bought
+      .to.emit(FocalPoint, "Transfer")
+      .withArgs(TRADER.address, FocalPoint.address, expectedBuyFeeAmount); // taxes taken
+
+    // trigger distribute and validate that tokens get sold by the contract
+    await expect(
+      tRouterOperator.swapExactTokensForETHSupportingFeeOnTransferTokens(
+        ethers.utils.parseEther("1"),
+        0,
+        [FocalPoint.address, WETH],
+        TRADER.address,
+        Math.round(new Date().getTime() / 1000) + 1000
+      )
+    )
+      .to.emit(FocalPoint, "Transfer")
+      .withArgs(TRADER.address, pairAddress, ethers.utils.parseEther("1"))
+      .to.emit(FocalPoint, "Transfer")
+      .withArgs(
+        FocalPoint.address,
+        pairAddress,
+        ethers.utils.parseEther("10000")
+      ); // fee tokens sold and sent return native the
+    // platform addy
   });
 
   it("Should prevent decreasing max transaction to below 75000", async function () {
@@ -194,22 +324,35 @@ describe("FocalPoint", function () {
     await expect(dTokenOperator.setMaxTransaction("76000")).to.not.be.reverted;
   });
 
+  it("Should prevent total fees above 20%", async function () {
+    await expect(dTokenOperator.setBuyFees(0, 0, 21)).to.be.revertedWith(
+      "fees cannot be over 20%"
+    );
+    await expect(dTokenOperator.setSellFees(0, 0, 21)).to.be.revertedWith(
+      "fees cannot be over 20%"
+    );
+  });
+
   it("Should report total buy fees", async function () {
     await (await dTokenOperator.setBuyFees(2, 2, 2)).wait();
     assert((await dTokenOperator.buyFee()).toString() == "6");
   });
 
-  it("Should take appropriate fees", async function () {
+  it("Should report total sell fees", async function () {
     await (await dTokenOperator.setSellFees(2, 2, 2)).wait();
     assert((await dTokenOperator.sellFee()).toString() == "6");
   });
-  
-  it("Should remove feeless address", async function () {
-    await expect(dTokenOperator.setFeeless(TRADER.address, true)).to.emit(FocalPoint, "AddFeeExemption").withArgs(TRADER.address);
-    assert(await dTokenOperator.feelessAddresses(TRADER.address) == true);
 
-    await expect(dTokenOperator.setFeeless(TRADER.address, false)).to.emit(FocalPoint, "RemoveFeeExemption").withArgs(TRADER.address);
-    assert(await dTokenOperator.feelessAddresses(TRADER.address) == false);
+  it("Should add/remove feeless address", async function () {
+    await expect(dTokenOperator.setFeeless(TRADER.address, true))
+      .to.emit(FocalPoint, "AddFeeExemption")
+      .withArgs(TRADER.address);
+    assert((await dTokenOperator.feelessAddresses(TRADER.address)) == true);
+
+    await expect(dTokenOperator.setFeeless(TRADER.address, false))
+      .to.emit(FocalPoint, "RemoveFeeExemption")
+      .withArgs(TRADER.address);
+    assert((await dTokenOperator.feelessAddresses(TRADER.address)) == false);
   });
 
   it("Should take appropriate fees", async function () {
@@ -326,7 +469,8 @@ describe("FocalPoint", function () {
         FocalPoint.address,
         pairAddress,
         ethers.utils.parseEther("7500")
-      ); // fee tokens sold and send return native the platform addy
+      ); // fee tokens sold and sent return native the
+    // platform addy
     assert(
       (await prov.getBalance(PLATFORM.address)) > initPR,
       "Native balance didn't increase"
