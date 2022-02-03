@@ -45,6 +45,10 @@ contract FocalPoint is ERC20, Ownable {
     uint256 ethReceived,
     uint256 tokensIntoLiquidity
   );
+  event SwapAndDistribute(
+    uint256 tokensSwapped,
+    uint256 ethReceived
+  );
   bool public swapAndLiquifyEnabled = false;
   bool private _liquifying;
 
@@ -447,6 +451,10 @@ contract FocalPoint is ERC20, Ownable {
     (success, ) = address(marketingFee.beneficiary).call{
       value: nativeForMarketing
     }("");
+    emit SwapAndDistribute(
+      platformForNative+marketingForNative,
+      nativeBalance
+    );
 
     // move any remaining native tokens to the platform address
     if (address(this).balance > 1e16) {
