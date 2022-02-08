@@ -45,10 +45,7 @@ contract FocalPoint is ERC20, Ownable {
     uint256 ethReceived,
     uint256 tokensIntoLiquidity
   );
-  event SwapAndDistribute(
-    uint256 tokensSwapped,
-    uint256 ethReceived
-  );
+  event SwapAndDistribute(uint256 tokensSwapped, uint256 ethReceived);
   bool public swapAndLiquifyEnabled = false;
   bool private _liquifying;
 
@@ -128,6 +125,7 @@ contract FocalPoint is ERC20, Ownable {
 
     setFeeless(address(this), true);
   }
+
   // To receive ETH from router when swapping
   receive() external payable {}
 
@@ -361,13 +359,6 @@ contract FocalPoint is ERC20, Ownable {
     }
   }
 
-  function _liquifyReady() private view returns (bool) {
-    if (liquidityFee.tokensCollected >= _minSwapTokens) {
-      return true;
-    }
-    return false;
-  }
-
   function _feesForDistributeCollected() private view returns (uint256) {
     return platformFee.tokensCollected + marketingFee.tokensCollected;
   }
@@ -381,10 +372,7 @@ contract FocalPoint is ERC20, Ownable {
     // see if we can distribute fees or add more liquidity
     // goal is to run the sell for the larger balance
     if (!_liquifying && swapAndLiquifyEnabled) {
-      if (
-        _liquifyReady() &&
-        liquidityFee.tokensCollected >= _feesForDistributeCollected()
-      ) {
+      if (liquidityFee.tokensCollected >= _minSwapTokens) {
         _swapAndLiquify();
       } else if (_feesForDistributeCollected() >= _minSwapTokens) {
         _swapAndDistribute();
@@ -432,7 +420,7 @@ contract FocalPoint is ERC20, Ownable {
     // sell the tokens and divide recieved amount to fee addresses
     _swapTokensForNative(platformForNative + marketingForNative);
 
-    // we need to calculate the ratio of native tokens each 
+    // we need to calculate the ratio of native tokens each
     // beneficiary should receive.
     uint256 nativeBalance = address(this).balance - initialNativeBalance;
     uint256 nativeForPlatform = (nativeBalance * platformForNative) /
@@ -451,7 +439,7 @@ contract FocalPoint is ERC20, Ownable {
       value: nativeForMarketing
     }("");
     emit SwapAndDistribute(
-      platformForNative+marketingForNative,
+      platformForNative + marketingForNative,
       nativeBalance
     );
 
