@@ -9,3 +9,4 @@ build
 #Hardhat files
 cache
 artifacts
+flattened_contracts
