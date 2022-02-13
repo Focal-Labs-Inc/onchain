@@ -23,7 +23,7 @@ import {
   Presale,
   Presale__factory,
 } from "./../typechain-types";
-
+import * as fs from 'fs';
 dotenv.config();
 const ORCHESTRATOR_KEY = process.env.ORCHESTRATOR_PRIVATE_KEY!;
 const PLATFORM_ADDRESS = process.env.PLATFORM_ADDRESS!;
@@ -162,9 +162,7 @@ task(
     const ORCHESTRATOR_ACCOUNT = wallet.connect(provider);
 
     const FocalPoint = await deployToken(ORCHESTRATOR_ACCOUNT, metadata, hre);
-
     const FocalPresale = await deployPresale(ORCHESTRATOR_ACCOUNT, hre);
-
     await distributeTokens(ORCHESTRATOR_ACCOUNT, FocalPoint, FocalPresale);
 
     console.log(
@@ -184,6 +182,10 @@ task(
       });
     } catch {
       console.log("VERIFICATION FAILED!!!");
+    }
+    if (metadata.networkName == "forknet") {
+      console.log("!!!! Finished test run on forknet successfully !!!!");
+      fs.writeFileSync('./SAFE_DEPLOY','0');
     }
   }
 );
