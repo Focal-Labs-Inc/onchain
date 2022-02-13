@@ -33,6 +33,13 @@ const config: HardhatUserConfig = {
     externalArtifacts: ['abis/*.json'],
   },
   networks: {
+    mainnet: {
+      metadata: {
+        router: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+        networkName: "mainnet",
+      },
+      url: `https://bsc.getblock.io/mainnet/?api_key=${process.env.GETBLOCK_API_KEY}`,
+    },
     testnet: {
       metadata: {
         router: "0xD99D1c33F9fC3444f8101754aBC46c52416550D1",
