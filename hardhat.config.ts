@@ -9,7 +9,7 @@ import "solidity-coverage";
 import "hardhat-gas-reporter";
 
 import "./tasks/accounts.ts";
-import "./tasks/deploy.ts";
+import "./tasks/1_deploy.ts";
 import "./tasks/setupPresale.ts";
 import "./tasks/finalizePresale.ts";
 import "./tasks/launchToken.ts";

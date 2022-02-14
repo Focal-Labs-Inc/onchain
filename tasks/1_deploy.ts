@@ -23,7 +23,7 @@ import {
   Presale,
   Presale__factory,
 } from "./../typechain-types";
-import * as fs from 'fs';
+import * as fs from "fs";
 dotenv.config();
 const ORCHESTRATOR_KEY = process.env.ORCHESTRATOR_PRIVATE_KEY!;
 const PLATFORM_ADDRESS = process.env.PLATFORM_ADDRESS!;
@@ -90,10 +90,10 @@ async function deployToken(
 async function distributeTokens(
   deployerAccount: Wallet,
   tokenInstance: FocalPoint,
-  presaleInstance: Presale,
+  presaleInstance: Presale
 ) {
   var supply = (
-    await tokenInstance.balanceOf(deployerAccount.address)
+    await tokenInstance.totalSupply()
   ).toString();
   let teamTokens = BigNumber.from(supply).div(5).toString();
   let marketingTokens = BigNumber.from(supply).div(20).toString();
@@ -107,9 +107,9 @@ async function distributeTokens(
       `\n> sending presale+private sale tokens (${presaleContractTokens}) to presale contract`
   );
 
-  await tokenInstance.transfer(TEAM_ADDRESS, teamTokens);
-  await tokenInstance.transfer(MARKETING_ADDRESS, marketingTokens);
-  await tokenInstance.transfer(presaleInstance.address, presaleContractTokens);
+  await (await tokenInstance.transfer(TEAM_ADDRESS, teamTokens)).wait();
+  await (await tokenInstance.transfer(MARKETING_ADDRESS, marketingTokens)).wait();
+  await (await tokenInstance.transfer(presaleInstance.address, presaleContractTokens)).wait();
 
   assert.equal(
     (await tokenInstance.balanceOf(TEAM_ADDRESS)).toString(),
@@ -131,10 +131,14 @@ async function distributeTokens(
   console.log(
     `Tokens distributed, sending remainder (${liquidityTokens}) to OPERATOR for launch`
   );
-  await tokenInstance.transfer(OPERATOR_ADDRESS, liquidityTokens);
+  await (await tokenInstance.transfer(OPERATOR_ADDRESS, liquidityTokens)).wait();
   assert.equal(
     (await tokenInstance.balanceOf(OPERATOR_ADDRESS)).toString(),
     liquidityTokens
+  );
+  assert.equal(
+    (await tokenInstance.balanceOf(deployerAccount.address)).toString(),
+    "0"
   );
 }
 
@@ -146,15 +150,11 @@ task(
 
     if (metadata.networkName == "mainnet") {
       console.log("!!!! Running on MAINNET !!!!");
-      var path = require("path");
-
-      path.exists("./SAFE_DEPLOY", function (exists: boolean) {
-        if (!exists) {
-          console.log(
-            "File SAFE_DEPLOY does not exist! Please run on the forknet first!"
-          );
-        }
-      });
+      if (!fs.existsSync("./SAFE_DEPLOY")) {
+        console.log(
+          "File SAFE_DEPLOY does not exist! Please run on the forknet first!"
+        );
+      }
     }
 
     const wallet = new hre.ethers.Wallet(ORCHESTRATOR_KEY);
@@ -168,8 +168,14 @@ task(
     console.log(
       "Deployment success, transfering ownership to operator and verifying FocalPoint"
     );
-    await FocalPoint.transferOwnership(OPERATOR_ADDRESS);
-    await FocalPresale.transferOwnership(OPERATOR_ADDRESS);
+    // set the liquidity tokens to go to the OPERATOR
+    await (await FocalPoint.setFeeAddresses(
+      "0x0000000000000000000000000000000000000000",
+      "0x0000000000000000000000000000000000000000",
+      OPERATOR_ADDRESS
+    )).wait();
+    await (await FocalPoint.transferOwnership(OPERATOR_ADDRESS)).wait();
+    await (await FocalPresale.transferOwnership(OPERATOR_ADDRESS)).wait();
     console.log("Verifying....");
     try {
       await hre.run("verify:verify", {
@@ -185,7 +191,7 @@ task(
     }
     if (metadata.networkName == "forknet") {
       console.log("!!!! Finished test run on forknet successfully !!!!");
-      fs.writeFileSync('./SAFE_DEPLOY','0');
+      fs.writeFileSync("./SAFE_DEPLOY", "0");
     }
   }
 );
